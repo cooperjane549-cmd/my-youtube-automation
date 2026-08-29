@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: youtube-automation-engine
+    env: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: PYTHON_UNBUFFERED
+        value: "1"
