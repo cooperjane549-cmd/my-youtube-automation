@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+edge-tts
+moviepy
+yfinance
+pydantic
+google-api-python-client
