@@ -1,7 +1,8 @@
+
 fastapi
 uvicorn
 edge-tts
-moviepy
+moviepy==1.0.3
 yfinance
 pydantic
 google-api-python-client
