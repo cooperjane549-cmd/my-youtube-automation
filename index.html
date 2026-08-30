@@ -1,178 +1,187 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automation Studio - YouTube Pipeline</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Automation Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; padding: 2rem; display: flex; justify-content: center; }
+    .dashboard { width: 100%; max-width: 1000px; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .header { grid-column: 1 / -1; margin-bottom: 1rem; }
+    .header h1 { font-size: 1.8rem; color: #818cf8; }
+    .header p { color: #94a3b8; font-size: 0.95rem; }
+    .card { background-color: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }
+    .card h2 { font-size: 1.2rem; margin-bottom: 1rem; color: #e2e8f0; }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem; }
+    input[type="text"], textarea { width: 100%; padding: 0.75rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #fff; font-size: 0.9rem; }
+    textarea { height: 120px; resize: vertical; }
+    .btn { display: inline-block; width: 100%; padding: 0.75rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn-primary { background: #4f46e5; color: #fff; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-success { background: #10b981; color: #fff; margin-top: 1rem; }
+    .btn-success:hover { background: #059669; }
+    .btn-approve { background: #2563eb; color: #fff; margin-top: 1rem; }
+    .btn-approve:hover { background: #1d4ed8; }
+    .preview-box { width: 100%; height: 280px; background: #0f172a; border-radius: 6px; display: flex; align-items: center; justify-content: center; border: 1px dashed #334155; overflow: hidden; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    .log-panel { grid-column: 1 / -1; background: #020617; border-radius: 6px; padding: 1rem; font-family: monospace; font-size: 0.85rem; color: #a3e635; min-height: 50px; border: 1px solid #1e293b; }
+    .input-inline { display: flex; gap: 0.5rem; }
+  </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen p-8">
-    <div class="max-w-4xl mx-auto space-y-8">
-        
-        <!-- Header -->
-        <header class="border-b border-slate-700 pb-4">
-            <h1 class="text-3xl font-bold text-indigo-400">Video Automation Dashboard</h1>
-            <p class="text-slate-400">Generate, review, render, and publish YouTube content.</p>
-        </header>
+<body>
 
-        <!-- Pipeline Controls -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            
-            <!-- Left Panel: Content Creation -->
-            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-                <h2 class="text-xl font-semibold text-slate-200">1. Data & Script Setup</h2>
-                
-                <div>
-                    <label class="block text-sm text-slate-400 mb-1">Stock Ticker Symbol</label>
-                    <div class="flex gap-2">
-                        <input id="tickerInput" type="text" value="AAPL" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-full">
-                        <button onclick="generateScript()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded font-medium">Fetch Data</button>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-sm text-slate-400 mb-1">Generated Script (Editable)</label>
-                    <textarea id="scriptBox" rows="6" class="bg-slate-900 border border-slate-700 rounded p-3 text-white w-full text-sm"></textarea>
-                </div>
-
-                <button onclick="renderVideo()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded font-medium">
-                    2. Render Voice & Video
-                </button>
-            </div>
-
-            <!-- Right Panel: Review & Approval -->
-            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-                <h2 class="text-xl font-semibold text-slate-200">2. Review & Approve</h2>
-                
-                <div class="bg-black aspect-[9/16] max-h-[300px] mx-auto rounded overflow-hidden flex items-center justify-center border border-slate-700 relative">
-                    <video id="videoPreview" controls class="h-full hidden"></video>
-                    <div id="loadingSpinner" class="hidden text-indigo-400 text-sm animate-pulse">Rendering Video on Cloud...</div>
-                    <span id="placeholderText" class="text-slate-500 text-sm">No video rendered yet</span>
-                </div>
-
-                <div class="space-y-2">
-                    <input id="videoTitle" type="text" placeholder="YouTube Video Title" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-full text-sm">
-                    <input id="videoDesc" type="text" placeholder="Video Description" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-full text-sm">
-                </div>
-
-                <button onclick="approveVideo()" class="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded font-medium">
-                    3. Approve & Publish to YouTube
-                </button>
-            </div>
-        </div>
-
-        <!-- Status Log -->
-        <div id="statusBox" class="bg-slate-950 p-4 rounded border border-slate-800 text-sm font-mono text-slate-400">
-            System ready. Enter a ticker to begin pipeline.
-        </div>
+  <div class="dashboard">
+    <div class="header">
+      <h1>Video Automation Dashboard</h1>
+      <p>Generate, review, render, and publish YouTube content.</p>
     </div>
 
-    <script>
-        // REPLACE THIS URL WITH YOUR DEPLOYED RENDER BACKEND URL ONCE LIVE
-        const API_BASE = "https://youtube-automation-engine.onrender.com/api"
-        let currentVideoFilename = "";
+    <!-- Step 1: Input & Scripting -->
+    <div class="card">
+      <h2>1. Data & Script Setup</h2>
+      <div class="form-group">
+        <label>Stock Ticker Symbol</label>
+        <div class="input-inline">
+          <input type="text" id="ticker" value="AAPL" placeholder="e.g. NVDA, TSLA">
+          <button class="btn btn-primary" onclick="fetchData()">Fetch Data</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Generated Script (Editable)</label>
+        <textarea id="scriptText" placeholder="Script content will appear here..."></textarea>
+      </div>
+      <button class="btn btn-success" onclick="startRender()">2. Render Voice & Video</button>
+    </div>
 
-        function log(msg) {
-            document.getElementById("statusBox").innerText = `> ${msg}`;
+    <!-- Step 2: Media Review & Publishing -->
+    <div class="card">
+      <h2>2. Review & Approve</h2>
+      <div class="preview-box">
+        <video id="videoPlayer" controls style="display: none;"></video>
+        <span id="previewPlaceholder" style="color: #64748b;">No video rendered yet</span>
+      </div>
+      <div class="form-group" style="margin-top: 1rem;">
+        <input type="text" id="videoTitle" placeholder="Video Title">
+      </div>
+      <div class="form-group">
+        <input type="text" id="videoDesc" placeholder="Video Description">
+      </div>
+      <button class="btn btn-approve" onclick="approveAndPublish()">3. Approve & Publish to YouTube</button>
+    </div>
+
+    <!-- Console Logs -->
+    <div class="log-panel" id="logPanel">> System Ready.</div>
+  </div>
+
+  <script>
+    const API_BASE = "https://youtube-automation-engine.onrender.com/api";
+    let currentJobId = null;
+    let renderedFilename = null;
+
+    function log(msg) {
+      document.getElementById("logPanel").innerText = "> " + msg;
+    }
+
+    async function fetchData() {
+      const ticker = document.getElementById("ticker").value.trim();
+      log(`Fetching stock data for ${ticker}...`);
+      try {
+        const res = await fetch(`${API_BASE}/generate-script`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticker })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById("scriptText").value = data.script;
+          document.getElementById("videoTitle").value = `${ticker.toUpperCase()} Market Update - Daily Breakdown`;
+          document.getElementById("videoDesc").value = `Automated analysis for ${ticker.toUpperCase()} stock movement.`;
+          log("Script generated successfully.");
+        } else {
+          log(`Error: ${data.detail}`);
         }
+      } catch (err) {
+        log(`Network Error: ${err.message}`);
+      }
+    }
 
-        async function generateScript() {
-            const ticker = document.getElementById("tickerInput").value;
-            log(`Fetching market data for ${ticker}...`);
-            try {
-                const res = await fetch(`${API_BASE}/generate-script`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ticker })
-                });
-                const data = await res.json();
-                document.getElementById("scriptBox").value = data.script;
-                document.getElementById("videoTitle").value = `${ticker.toUpperCase()} Market Update - Daily Breakdown`;
-                document.getElementById("videoDesc").value = `Automated analysis for ${ticker.toUpperCase()} stock movement.`;
-                log("Script generated successfully. Review text and click Render.");
-            } catch (err) {
-                log("Error generating script: " + err);
-            }
+    async function startRender() {
+      const script_text = document.getElementById("scriptText").value;
+      if (!script_text) return log("Error: No script provided!");
+
+      log("Initiating rendering pipeline on backend...");
+      try {
+        const res = await fetch(`${API_BASE}/render-video`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script_text })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          currentJobId = data.job_id;
+          pollStatus();
+        } else {
+          log(`Render initiation failed: ${data.detail}`);
         }
+      } catch (err) {
+        log(`Network Error: ${err.message}`);
+      }
+    }
 
-        async function renderVideo() {
-            const scriptText = document.getElementById("scriptBox").value;
-            log("Submitting render task to background worker...");
+    function pollStatus() {
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/job-status/${currentJobId}`);
+          const data = await res.json();
+          
+          if (data.status === "processing" || data.status === "queued") {
+            log(`Status: ${data.progress || "Processing..."}`);
+          } else if (data.status === "completed") {
+            clearInterval(interval);
+            log("Video rendered successfully!");
             
-            document.getElementById("placeholderText").classList.add("hidden");
-            document.getElementById("videoPreview").classList.add("hidden");
-            document.getElementById("loadingSpinner").classList.remove("hidden");
-
-            try {
-                const res = await fetch(`${API_BASE}/render-video`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ script_text: scriptText })
-                });
-                const data = await res.json();
-                pollJobStatus(data.job_id);
-            } catch (err) {
-                log("Error initiating render: " + err);
-                document.getElementById("loadingSpinner").classList.add("hidden");
-                document.getElementById("placeholderText").classList.remove("hidden");
-            }
+            renderedFilename = data.filename;
+            const videoPlayer = document.getElementById("videoPlayer");
+            const placeholder = document.getElementById("previewPlaceholder");
+            
+            videoPlayer.src = `${API_BASE.replace('/api', '')}${data.video_url}`;
+            videoPlayer.style.display = "block";
+            placeholder.style.display = "none";
+            videoPlayer.load();
+            videoPlayer.play();
+          } else if (data.status === "failed") {
+            clearInterval(interval);
+            log(`Render failed: ${data.error}`);
+          }
+        } catch (err) {
+          clearInterval(interval);
+          log(`Polling Error: ${err.message}`);
         }
+      }, 3000);
+    }
 
-        async function pollJobStatus(jobId) {
-            const interval = setInterval(async () => {
-                try {
-                    const res = await fetch(`${API_BASE}/job-status/${jobId}`);
-                    const job = await res.json();
-                    
-                    if (job.status === "completed") {
-                        clearInterval(interval);
-                        currentVideoFilename = job.filename;
-                        const videoEl = document.getElementById("videoPreview");
-                        videoEl.src = `${API_BASE.replace('/api', '')}${job.video_url}`;
-                        
-                        document.getElementById("loadingSpinner").classList.add("hidden");
-                        videoEl.classList.remove("hidden");
-                        log("Render complete! Video is ready for preview.");
-                    } else if (job.status === "failed") {
-                        clearInterval(interval);
-                        document.getElementById("loadingSpinner").classList.add("hidden");
-                        document.getElementById("placeholderText").classList.remove("hidden");
-                        log("Render failed: " + job.error);
-                    } else {
-                        log(`Processing: ${job.progress || 'Rendering in progress...'}`);
-                    }
-                } catch (err) {
-                    clearInterval(interval);
-                    log("Polling error: " + err);
-                }
-            }, 3000);
-        }
+    async function approveAndPublish() {
+      if (!renderedFilename) return log("Error: Render a video first!");
 
-        async function approveVideo() {
-            if (!currentVideoFilename) {
-                log("Error: Please render a video before approving.");
-                return;
-            }
-            const title = document.getElementById("videoTitle").value;
-            const description = document.getElementById("videoDesc").value;
-
-            log("Submitting approval to YouTube API engine...");
-            try {
-                const res = await fetch(`${API_BASE}/approve-upload`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        video_filename: currentVideoFilename,
-                        title: title,
-                        description: description
-                    })
-                });
-                const data = await res.json();
-                log("SUCCESS: " + data.message);
-            } catch (err) {
-                log("Error approving video: " + err);
-            }
-        }
-    </script>
+      log("Publishing video to YouTube...");
+      try {
+        const res = await fetch(`${API_BASE}/approve-upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            video_filename: renderedFilename,
+            title: document.getElementById("videoTitle").value,
+            description: document.getElementById("videoDesc").value
+          })
+        });
+        const data = await res.json();
+        log(data.message);
+      } catch (err) {
+        log(`Upload Error: ${err.message}`);
+      }
+    }
+  </script>
 </body>
 </html>
