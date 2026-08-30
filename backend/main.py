@@ -7,6 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import yfinance as yf
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+# Google API client imports for YouTube Publishing
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 app = FastAPI()
 
@@ -22,6 +29,7 @@ OS_MEDIA_DIR = "static_media"
 os.makedirs(OS_MEDIA_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=OS_MEDIA_DIR), name="static")
 
+# In-memory job state tracker
 jobs = {}
 
 class ScriptRequest(BaseModel):
@@ -44,34 +52,53 @@ def health_check():
 @app.post("/api/generate-script")
 def generate_script(data: ScriptRequest):
     try:
-        ticker_str = data.ticker.upper()
-        stock = yf.Ticker(ticker_str)
+        stock = yf.Ticker(data.ticker)
         history = stock.history(period="1mo")
         if history.empty:
             raise HTTPException(status_code=400, detail="Invalid ticker symbol")
 
         close_price = round(history["Close"].iloc[-1], 2)
-        open_price = round(history["Open"].iloc[-1], 2)
-        change = round(((close_price - open_price) / open_price) * 100, 2)
+        prev_close = round(history["Open"].iloc[-1], 2)
+        change = round(((close_price - prev_close) / prev_close) * 100, 2)
         high_price = round(history["High"].max(), 2)
         low_price = round(history["Low"].min(), 2)
-        avg_volume = int(history["Volume"].mean())
+        avg_vol = int(history["Volume"].mean())
 
-        # Expanded narrative structure to dramatically increase duration
-        script_sections = [
-            f"Welcome back to the Daily Market Briefing. Today, we are taking an in-depth deep dive into {ticker_str}.",
-            f"Looking at today's price action, {ticker_str} opened trading at ${open_price} and closed at ${close_price}, representing a net change of {change} percent.",
-            f"Over the last 30 trading sessions, {ticker_str} reached a high of ${high_price} and hit a low of ${low_price}.",
-            f"Trading activity remains strong, with average monthly volume sitting near {avg_volume:,} shares traded per session.",
-            f"When examining broader market trends, institutional investors continue to monitor {ticker_str} closely due to shifting macroeconomic conditions, interest rate expectations, and sector momentum.",
-            f"For long-term investors, key price levels to watch include the technical support zone near ${low_price} and resistance near ${high_price}.",
-            f"Make sure to hit the subscribe button, leave a like, and comment below with your price target for {ticker_str}. Thank you for watching today's comprehensive analysis."
+        ticker_sym = data.ticker.upper()
+
+        # Multi-section long form script generator for higher retention & duration
+        sections = [
+            f"Welcome back to the Channel! Today we are looking at an in-depth market breakdown for {ticker_sym}.",
+            f"Looking at today's price movements, {ticker_sym} opened at ${prev_close} and closed at ${close_price}, showing a net change of {change} percent.",
+            f"Over the last month, the stock traded within a range between a low of ${low_price} and a high of ${high_price}.",
+            f"Trading volume has averaged {avg_vol:,} shares per day, highlighting active institutional interest.",
+            f"Analyzing technical indicators, key support sits near ${low_price} while resistance remains established near ${high_price}.",
+            f"Investors should keep a close eye on incoming earnings announcements and market macro factors moving forward.",
+            f"If you found this analysis helpful, please hit the like button and subscribe for daily stock updates! Leave your thoughts in the comments."
         ]
-        
-        full_script = " ".join(script_sections)
-        return {"status": "success", "script": full_script}
+
+        script = " ".join(sections)
+        return {"status": "success", "script": script}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def make_text_image(text_lines, width=720, height=1280):
+    """Generates an RGB numpy frame with custom rendered text overlays without requiring ImageMagick."""
+    img = Image.new('RGB', (width, height), color=(15, 23, 42))
+    draw = ImageDraw.Draw(img)
+    
+    # Render header
+    draw.text((width // 2, 200), "DAILY MARKET REPORT", fill=(99, 102, 241), anchor="mm")
+    draw.line([(100, 240), (620, 240)], fill=(51, 65, 85), width=3)
+    
+    # Render main content
+    y_offset = 350
+    for line in text_lines:
+        draw.text((width // 2, y_offset), line, fill=(241, 245, 249), anchor="mm")
+        y_offset += 60
+        
+    return np.array(img)
 
 
 def run_video_pipeline(job_id: str, script_text: str):
@@ -90,37 +117,41 @@ def run_video_pipeline(job_id: str, script_text: str):
 
         asyncio.run(make_audio())
 
-        # 2. Render Video with Visual Text Overlay
-        jobs[job_id]["progress"] = "Rendering Video Media & Visuals..."
+        # 2. Render Video with Visual Cards
+        jobs[job_id]["progress"] = "Rendering Video Visuals & Audio..."
 
-        from moviepy.editor import AudioFileClip, ColorClip, TextClip, CompositeVideoClip
+        try:
+            from moviepy.editor import AudioFileClip, ImageClip
+        except (ImportError, AttributeError):
+            from moviepy.audio.io.AudioFileClip import AudioFileClip
+            from moviepy.video.VideoClip import ImageClip
 
         audio_clip = AudioFileClip(audio_path)
+
+        # Format script snippet for screen frame
+        words = script_text.split()
+        line_1 = " ".join(words[:6]) if len(words) >= 6 else script_text
+        line_2 = " ".join(words[6:12]) if len(words) >= 12 else ""
+        line_3 = " ".join(words[12:18]) if len(words) >= 18 else ""
         
-        # Base Background (Dark Theme)
-        bg_clip = ColorClip(
-            size=(720, 1280), color=(15, 23, 42), duration=audio_clip.duration
-        )
+        frame_array = make_text_image([line_1, line_2, line_3])
 
-        # Visual Text Overlay on Screen
-        txt_clip = TextClip(
-            "DAILY MARKET UPDATE\n\nAutomated Financial Report",
-            fontsize=40,
-            color='white',
-            size=(600, 400),
-            method='caption'
-        ).set_position('center').set_duration(audio_clip.duration)
+        # Create video clip with visual text matching audio length
+        try:
+            background_clip = ImageClip(frame_array).set_duration(audio_clip.duration)
+            final_clip = background_clip.set_audio(audio_clip)
+        except AttributeError:
+            background_clip = ImageClip(frame_array).with_duration(audio_clip.duration)
+            final_clip = background_clip.with_audio(audio_clip)
 
-        # Combine Background and Text Overlay
-        final_video = CompositeVideoClip([bg_clip, txt_clip]).set_audio(audio_clip)
-
-        final_video.write_videofile(
+        final_clip.write_videofile(
             video_path, fps=24, codec="libx264", audio_codec="aac", verbose=False, logger=None
         )
 
         audio_clip.close()
-        final_video.close()
+        final_clip.close()
 
+        # 3. Mark Complete
         jobs[job_id] = {
             "status": "completed",
             "filename": video_filename,
@@ -152,7 +183,51 @@ def approve_and_upload(data: UploadRequest):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Video file not found.")
 
-    return {
-        "status": "success",
-        "message": f"Video '{data.title}' approved and queued for YouTube upload!",
-    }
+    # YouTube API Integration
+    client_id = os.getenv("YOUTUBE_CLIENT_ID")
+    client_secret = os.getenv("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.getenv("YOUTUBE_REFRESH_TOKEN")
+
+    if not all([client_id, client_secret, refresh_token]):
+        # Fallback if env vars aren't set yet in Render
+        return {
+            "status": "success",
+            "message": f"Video '{data.title}' approved locally! Set YOUTUBE_REFRESH_TOKEN in Render environment to upload live.",
+        }
+
+    try:
+        creds = Credentials(
+            None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret
+        )
+
+        youtube = build("youtube", "v3", credentials=creds)
+
+        body = {
+            "snippet": {
+                "title": data.title,
+                "description": data.description,
+                "tags": ["stocks", "finance", "market", "automation"],
+                "categoryId": "27"  # Education
+            },
+            "status": {
+                "privacyStatus": "public",
+                "selfDeclaredMadeForKids": False
+            }
+        }
+
+        media = MediaFileUpload(file_path, chunksize=-1, resumable=True, mimetype="video/mp4")
+        request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+        response = request.execute()
+
+        video_id = response.get("id", "")
+        return {
+            "status": "success",
+            "message": f"Published directly to YouTube! Video ID: {video_id}",
+            "youtube_url": f"https://www.youtube.com/watch?v={video_id}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"YouTube Upload Error: {str(e)}")
