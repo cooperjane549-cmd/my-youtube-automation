@@ -66,15 +66,14 @@ def generate_script(data: ScriptRequest):
 
         ticker_sym = data.ticker.upper()
 
-        # Multi-section long form script generator for higher retention & duration
+        # Multi-section script generator to scale video length
         sections = [
-            f"Welcome back to the Channel! Today we are looking at an in-depth market breakdown for {ticker_sym}.",
-            f"Looking at today's price movements, {ticker_sym} opened at ${prev_close} and closed at ${close_price}, showing a net change of {change} percent.",
-            f"Over the last month, the stock traded within a range between a low of ${low_price} and a high of ${high_price}.",
-            f"Trading volume has averaged {avg_vol:,} shares per day, highlighting active institutional interest.",
-            f"Analyzing technical indicators, key support sits near ${low_price} while resistance remains established near ${high_price}.",
-            f"Investors should keep a close eye on incoming earnings announcements and market macro factors moving forward.",
-            f"If you found this analysis helpful, please hit the like button and subscribe for daily stock updates! Leave your thoughts in the comments."
+            f"Welcome back to the Channel! Today we are doing a deep dive into {ticker_sym}.",
+            f"Looking at recent price movements, {ticker_sym} opened trading at ${prev_close} and closed at ${close_price}, showing a {change}% shift.",
+            f"Over the past 30 days, the high touched ${high_price} while the low established technical support near ${low_price}.",
+            f"Trading activity was substantial, recording an average daily volume of {avg_vol:,} shares.",
+            f"Moving forward, watch for key macroeconomic reports and market sentiment around {ticker_sym}.",
+            f"Hit subscribe for daily stock breakdowns, and drop your target price for {ticker_sym} in the comments below!"
         ]
 
         script = " ".join(sections)
@@ -83,21 +82,48 @@ def generate_script(data: ScriptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def make_text_image(text_lines, width=720, height=1280):
-    """Generates an RGB numpy frame with custom rendered text overlays without requiring ImageMagick."""
+def render_dynamic_frame(t, total_duration, script_text):
+    """Generates a dynamic 720x1280 frame at time t with animated ticker metrics & captions."""
+    width, height = 720, 1280
+    
+    # 1. Base image background
     img = Image.new('RGB', (width, height), color=(15, 23, 42))
     draw = ImageDraw.Draw(img)
+
+    # 2. Header banner
+    draw.rectangle([40, 60, 680, 140], fill=(30, 41, 59), outline=(99, 102, 241), width=2)
+    draw.text((width // 2, 100), "MARKET AUTOMATION LAB", fill=(241, 245, 249), anchor="mm")
+
+    # 3. Dynamic Visual Card (Pulsing graphic block based on time t)
+    pulse = int(20 * np.sin(2 * np.pi * t / 2))
+    card_y1 = 200
+    card_y2 = 500
+    draw.rectangle([60, card_y1, 660, card_y2], fill=(15, 30, 55), outline=(59, 130, 246), width=3)
     
-    # Render header
-    draw.text((width // 2, 200), "DAILY MARKET REPORT", fill=(99, 102, 241), anchor="mm")
-    draw.line([(100, 240), (620, 240)], fill=(51, 65, 85), width=3)
+    # Visual status bar
+    progress_width = int((t / max(total_duration, 1)) * 560)
+    draw.rectangle([80, 460, 80 + progress_width, 475], fill=(16, 185, 129))
+
+    draw.text((width // 2, 280), "LIVE TICKER ANALYSIS", fill=(148, 163, 184), anchor="mm")
+    draw.text((width // 2, 350), f"TIMECODE: {round(t, 1)}s / {round(total_duration, 1)}s", fill=(52, 211, 153), anchor="mm")
+
+    # 4. Dynamic Word Captioning (Cycles through sentence chunks based on video playback time)
+    words = script_text.split()
+    words_per_sec = len(words) / max(total_duration, 1)
+    current_word_idx = int(t * words_per_sec)
+
+    chunk_size = 6
+    start_idx = (current_word_idx // chunk_size) * chunk_size
+    caption_chunk = " ".join(words[start_idx : start_idx + chunk_size])
+
+    # Draw Caption Background Box
+    draw.rectangle([40, 800, 680, 1050], fill=(2, 6, 23), outline=(71, 85, 105), width=2)
+    draw.text((width // 2, 840), "VOICEOVER CAPTIONS", fill=(99, 102, 241), anchor="mm")
     
-    # Render main content
-    y_offset = 350
-    for line in text_lines:
-        draw.text((width // 2, y_offset), line, fill=(241, 245, 249), anchor="mm")
-        y_offset += 60
-        
+    # Render active words on screen
+    if caption_chunk:
+        draw.text((width // 2, 930), caption_chunk, fill=(255, 255, 255), anchor="mm")
+
     return np.array(img)
 
 
@@ -117,39 +143,33 @@ def run_video_pipeline(job_id: str, script_text: str):
 
         asyncio.run(make_audio())
 
-        # 2. Render Video with Visual Cards
-        jobs[job_id]["progress"] = "Rendering Video Visuals & Audio..."
+        # 2. Render Dynamic Animated Video
+        jobs[job_id]["progress"] = "Rendering Dynamic Frame Sequence..."
 
         try:
-            from moviepy.editor import AudioFileClip, ImageClip
+            from moviepy.editor import AudioFileClip, VideoClip
         except (ImportError, AttributeError):
             from moviepy.audio.io.AudioFileClip import AudioFileClip
-            from moviepy.video.VideoClip import ImageClip
+            from moviepy.video.VideoClip import VideoClip
 
         audio_clip = AudioFileClip(audio_path)
+        duration = audio_clip.duration
 
-        # Format script snippet for screen frame
-        words = script_text.split()
-        line_1 = " ".join(words[:6]) if len(words) >= 6 else script_text
-        line_2 = " ".join(words[6:12]) if len(words) >= 12 else ""
-        line_3 = " ".join(words[12:18]) if len(words) >= 18 else ""
-        
-        frame_array = make_text_image([line_1, line_2, line_3])
+        # MoviePy function frame generator driven by time parameter t
+        def make_frame(t):
+            return render_dynamic_frame(t, duration, script_text)
 
-        # Create video clip with visual text matching audio length
         try:
-            background_clip = ImageClip(frame_array).set_duration(audio_clip.duration)
-            final_clip = background_clip.set_audio(audio_clip)
+            video_clip = VideoClip(make_frame, duration=duration).set_audio(audio_clip)
         except AttributeError:
-            background_clip = ImageClip(frame_array).with_duration(audio_clip.duration)
-            final_clip = background_clip.with_audio(audio_clip)
+            video_clip = VideoClip(make_frame, duration=duration).with_audio(audio_clip)
 
-        final_clip.write_videofile(
+        video_clip.write_videofile(
             video_path, fps=24, codec="libx264", audio_codec="aac", verbose=False, logger=None
         )
 
         audio_clip.close()
-        final_clip.close()
+        video_clip.close()
 
         # 3. Mark Complete
         jobs[job_id] = {
@@ -189,10 +209,9 @@ def approve_and_upload(data: UploadRequest):
     refresh_token = os.getenv("YOUTUBE_REFRESH_TOKEN")
 
     if not all([client_id, client_secret, refresh_token]):
-        # Fallback if env vars aren't set yet in Render
         return {
             "status": "success",
-            "message": f"Video '{data.title}' approved locally! Set YOUTUBE_REFRESH_TOKEN in Render environment to upload live.",
+            "message": f"Video '{data.title}' approved locally! Add YouTube API keys to Render to enable auto-publishing.",
         }
 
     try:
@@ -211,7 +230,7 @@ def approve_and_upload(data: UploadRequest):
                 "title": data.title,
                 "description": data.description,
                 "tags": ["stocks", "finance", "market", "automation"],
-                "categoryId": "27"  # Education
+                "categoryId": "27"
             },
             "status": {
                 "privacyStatus": "public",
