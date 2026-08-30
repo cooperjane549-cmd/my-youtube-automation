@@ -80,20 +80,26 @@ def run_video_pipeline(job_id: str, script_text: str):
 
         asyncio.run(make_audio())
 
-        # 2. Render Video (Compatible with MoviePy v1.x and v2.x)
+        # 2. Render Video
         jobs[job_id]["progress"] = "Rendering Video Media Clip..."
-        
+
+        # Handle MoviePy v1 vs v2 compatibility
         try:
             from moviepy.editor import AudioFileClip, ColorClip
-        except ImportError:
+            audio_clip = AudioFileClip(audio_path)
+            background_clip = ColorClip(
+                size=(720, 1280), color=(15, 23, 42), duration=audio_clip.duration
+            )
+            final_clip = background_clip.set_audio(audio_clip)
+        except (ImportError, AttributeError):
             from moviepy.audio.io.AudioFileClip import AudioFileClip
             from moviepy.video.VideoClip import ColorClip
+            audio_clip = AudioFileClip(audio_path)
+            background_clip = ColorClip(
+                size=(720, 1280), color=(15, 23, 42)
+            ).with_duration(audio_clip.duration)
+            final_clip = background_clip.with_audio(audio_clip)
 
-        audio_clip = AudioFileClip(audio_path)
-        background_clip = ColorClip(
-            size=(720, 1280), color=(15, 23, 42), duration=audio_clip.duration
-        )
-        final_clip = background_clip.set_audio(audio_clip)
         final_clip.write_videofile(
             video_path, fps=24, codec="libx264", audio_codec="aac", verbose=False, logger=None
         )
