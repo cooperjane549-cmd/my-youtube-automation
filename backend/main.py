@@ -80,9 +80,14 @@ def run_video_pipeline(job_id: str, script_text: str):
 
         asyncio.run(make_audio())
 
-        # 2. Render Video
+        # 2. Render Video (Compatible with MoviePy v1.x and v2.x)
         jobs[job_id]["progress"] = "Rendering Video Media Clip..."
-        from moviepy.editor import AudioFileClip, ColorClip
+        
+        try:
+            from moviepy.editor import AudioFileClip, ColorClip
+        except ImportError:
+            from moviepy.audio.io.AudioFileClip import AudioFileClip
+            from moviepy.video.VideoClip import ColorClip
 
         audio_clip = AudioFileClip(audio_path)
         background_clip = ColorClip(
