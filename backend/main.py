@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 import uuid
 import edge_tts
@@ -8,6 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import yfinance as yf
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 
 # Google API client imports for YouTube Publishing
@@ -63,14 +67,12 @@ def generate_script(data: ScriptRequest):
         high_price = round(history["High"].max(), 2)
         low_price = round(history["Low"].min(), 2)
         avg_vol = int(history["Volume"].mean())
-        
-        # Calculate Technical Indicators for extra narrative depth
+
         sma_50 = round(history["Close"].rolling(window=50).mean().iloc[-1], 2)
         sma_200 = round(history["Close"].rolling(window=200).mean().iloc[-1], 2)
-        
+
         ticker_sym = data.ticker.upper()
 
-        # Expanded Multi-Section Script (Designed to reach 3 to 5 minutes duration)
         sections = [
             f"Welcome back to the Channel! Today we are taking an exhaustive deep dive into {ticker_sym}.",
             f"Let's start by breaking down recent price activity. {ticker_sym} opened trading today at ${prev_close} and ended the session at ${close_price}, marking a net movement of {change} percent.",
@@ -82,8 +84,8 @@ def generate_script(data: ScriptRequest):
             f"Short-term traders should keep a close eye on incoming resistance targets around ${high_price}. A clean breakthrough past this boundary could trigger momentum buying.",
             f"Conversely, if selling pressure intensifies, key downside support rests firmly near ${low_price}, where buyers historically stepped in to absorb supply.",
             f"Long-term investors should weigh company fundamentals, earnings consistency, and balance sheet health before executing positioning strategy.",
-            f"That concludes our multi-minute technical and fundamental breakdown for {ticker_sym}.",
-            f"If you enjoyed this detailed report, make sure to like the video, hit subscribe, and turn on notifications so you never miss daily stock updates! Drop your price targets in the comments below."
+            f"That concludes our technical and fundamental breakdown for {ticker_sym}.",
+            f"If you enjoyed this detailed report, hit subscribe, like the video, and drop your price targets in the comments below."
         ]
 
         script = " ".join(sections)
@@ -92,72 +94,128 @@ def generate_script(data: ScriptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def render_scene_frame(t, duration, sentences, width=540, height=960):
-    """Renders highly legible, large text clips at lightweight 540x960 resolution for perfect sync."""
+def generate_chart_image(ticker_sym, history, width=480, height=280):
+    """Generates a high-contrast line chart for visual technical representation."""
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
+    fig.patch.set_facecolor('#0F172A')
+    ax.set_facecolor('#1E293B')
+
+    prices = history["Close"].tail(60).values
+    ax.plot(prices, color='#10B981', linewidth=2.5)
+    ax.fill_between(range(len(prices)), prices, min(prices), color='#10B981', alpha=0.15)
+
+    ax.set_title(f"{ticker_sym} - 60-Day Technical Trajectory", color='#F8FAFC', fontsize=10, pad=8)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#475569')
+    ax.spines['bottom'].set_color('#475569')
+    ax.tick_params(colors='#94A3B8', labelsize=7)
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', facecolor=fig.get_facecolor(), edgecolor='none')
+    plt.close(fig)
+    buf.seek(0)
+    return Image.open(buf).convert('RGB')
+
+
+def render_rich_scene_frame(t, duration, sentences, stock_data, width=540, height=960):
+    """Renders highly dynamic visual scenes with stock charts, data tables, and high-visibility text layout."""
     num_scenes = max(len(sentences), 1)
     scene_duration = duration / num_scenes
     scene_idx = min(int(t // scene_duration), num_scenes - 1)
-    
-    current_text = sentences[scene_idx]
 
-    color_palettes = [
-        {"bg": (15, 23, 42), "card": (30, 41, 59), "accent": (99, 102, 241), "text": (255, 255, 255)},
-        {"bg": (10, 25, 47), "card": (23, 42, 69), "accent": (16, 185, 129), "text": (255, 255, 255)},
-        {"bg": (24, 15, 38), "card": (45, 27, 68), "accent": (236, 72, 153), "text": (255, 255, 255)},
-        {"bg": (30, 27, 75), "card": (49, 46, 129), "accent": (245, 158, 11), "text": (255, 255, 255)},
-        {"bg": (17, 24, 39), "card": (31, 41, 55), "accent": (14, 165, 233), "text": (255, 255, 255)}
-    ]
-    palette = color_palettes[scene_idx % len(color_palettes)]
+    current_text = sentences[scene_idx]
+    palette = {"bg": (15, 23, 42), "card": (30, 41, 59), "accent": (16, 185, 129), "text": (255, 255, 255)}
 
     img = Image.new('RGB', (width, height), color=palette["bg"])
     draw = ImageDraw.Draw(img)
 
-    # 1. Header Banner
-    draw.rectangle([20, 40, width - 20, 100], fill=palette["card"], outline=palette["accent"], width=3)
-    draw.text((width // 2, 70), f"PART #{scene_idx + 1} / {num_scenes}", fill=palette["accent"], anchor="mm")
+    # 1. Header Card
+    draw.rectangle([20, 30, width - 20, 90], fill=palette["card"], outline=palette["accent"], width=2)
+    draw.text((width // 2, 60), f"ANALYSIS SCENE {scene_idx + 1} / {num_scenes}", fill=palette["accent"], anchor="mm")
 
-    # 2. Main Content Box with Large Font Simulation
-    draw.rectangle([25, 130, width - 25, 750], fill=palette["card"], outline=(71, 85, 105), width=3)
+    # 2. Section 1: Dynamic Visual Chart or Key Metrics Table depending on scene index
+    if scene_idx % 2 == 0 and stock_data.get("chart_img") is not None:
+        # Render Market Line Chart
+        chart_img = stock_data["chart_img"]
+        img.paste(chart_img, (30, 110))
+        draw.rectangle([30, 110, 510, 390], outline=(71, 85, 105), width=2)
+    else:
+        # Render Key Technical Data Table
+        draw.rectangle([30, 110, 510, 390], fill=palette["card"], outline=palette["accent"], width=2)
+        draw.text((width // 2, 135), "KEY METRICS SUMMARY", fill=(245, 158, 11), anchor="mm")
+        draw.line([(50, 155), (490, 155)], fill=(71, 85, 105), width=1)
+
+        metrics = [
+            ("Ticker Symbol:", stock_data.get("ticker", "STK")),
+            ("Close Price:", f"${stock_data.get('close', 0)}"),
+            ("Daily Change:", f"{stock_data.get('change', 0)}%"),
+            ("52-Wk Range:", f"${stock_data.get('low', 0)} - ${stock_data.get('high', 0)}"),
+            ("50-Day Moving Avg:", f"${stock_data.get('sma50', 0)}")
+        ]
+
+        y_table = 180
+        for label, val in metrics:
+            draw.text((60, y_table), label, fill=(148, 163, 184), anchor="lm")
+            draw.text((450, y_table), str(val), fill=(255, 255, 255), anchor="rm")
+            y_table += 40
+
+    # 3. Section 2: Text Card for Active Narration
+    draw.rectangle([30, 410, width - 30, 820], fill=palette["card"], outline=(71, 85, 105), width=2)
 
     words = current_text.split()
-    # 3 words per line makes font sizing fill the phone screen comfortably
-    lines = [" ".join(words[i:i + 3]) for i in range(0, len(words), 3)]
+    lines = [" ".join(words[i:i + 4]) for i in range(0, len(words), 4)]
 
-    y_offset = 200
-    for line in lines[:8]:
-        # Emphasized bold visual text blocks
+    y_offset = 460
+    for line in lines[:6]:
         draw.text((width // 2, y_offset), line.upper(), fill=palette["text"], anchor="mm")
-        y_offset += 65
+        y_offset += 55
 
-    # 3. Dynamic Progress Bar
+    # 4. Progress Tracking Bar
     progress = int((t / max(duration, 1)) * (width - 60))
-    draw.rectangle([30, 780, 30 + progress, 795], fill=palette["accent"])
+    draw.rectangle([30, 840, 30 + progress, 850], fill=palette["accent"])
 
-    # 4. Footer
-    draw.line([(50, 880), (width - 50, 880)], fill=palette["accent"], width=3)
-    draw.text((width // 2, 915), "FINANCIAL AUTOMATION ENGINE", fill=(148, 163, 184), anchor="mm")
+    # 5. Footer Branding
+    draw.line([(50, 890), (width - 50, 890)], fill=palette["accent"], width=2)
+    draw.text((width // 2, 920), "MAGIC TORTOISE FINANCIAL ENGINE", fill=(148, 163, 184), anchor="mm")
 
     return np.array(img)
 
 
-def run_video_pipeline(job_id: str, script_text: str):
+def run_video_pipeline(job_id: str, script_text: str, ticker: str):
     try:
-        jobs[job_id] = {"status": "processing", "progress": "Generating Audio Voiceover..."}
+        jobs[job_id] = {"status": "processing", "progress": "Fetching Market Data & Generating Audio..."}
+
+        # Fetch yfinance technical data for visual widgets
+        stock = yf.Ticker(ticker)
+        history = stock.history(period="1y")
+
+        stock_data = {
+            "ticker": ticker.upper(),
+            "close": round(history["Close"].iloc[-1], 2) if not history.empty else 0,
+            "change": round(((history["Close"].iloc[-1] - history["Open"].iloc[-1]) / history["Open"].iloc[-1]) * 100, 2) if not history.empty else 0,
+            "low": round(history["Low"].min(), 2) if not history.empty else 0,
+            "high": round(history["High"].max(), 2) if not history.empty else 0,
+            "sma50": round(history["Close"].rolling(window=50).mean().iloc[-1], 2) if not history.empty else 0,
+            "chart_img": generate_chart_image(ticker.upper(), history) if not history.empty else None
+        }
 
         audio_filename = f"audio_{job_id}.mp3"
         video_filename = f"video_{job_id}.mp4"
         audio_path = os.path.join(OS_MEDIA_DIR, audio_filename)
         video_path = os.path.join(OS_MEDIA_DIR, video_filename)
 
-        # 1. Generate Audio
+        # 1. Generate Voiceover Audio
         async def make_audio():
             communicate = edge_tts.Communicate(script_text, "en-US-ChristopherNeural")
             await communicate.save(audio_path)
 
         asyncio.run(make_audio())
 
-        # 2. Render Synchronized Video
-        jobs[job_id]["progress"] = "Rendering High-Legibility Video Clips..."
+        # 2. Render Video with Charts and Data Tables
+        jobs[job_id]["progress"] = "Rendering Animated Charts & Data Tables..."
 
         try:
             from moviepy.editor import AudioFileClip, VideoClip
@@ -173,14 +231,13 @@ def run_video_pipeline(job_id: str, script_text: str):
             sentences = [script_text]
 
         def frame_generator(t):
-            return render_scene_frame(t, duration, sentences)
+            return render_rich_scene_frame(t, duration, sentences, stock_data)
 
         try:
             video_clip = VideoClip(frame_generator, duration=duration).set_audio(audio_clip)
         except AttributeError:
             video_clip = VideoClip(frame_generator, duration=duration).with_audio(audio_clip)
 
-        # Rendering at 12 FPS guarantees smooth processing on Render free servers without lag
         video_clip.write_videofile(
             video_path, fps=12, codec="libx264", audio_codec="aac", verbose=False, logger=None
         )
@@ -188,7 +245,7 @@ def run_video_pipeline(job_id: str, script_text: str):
         audio_clip.close()
         video_clip.close()
 
-        # 3. Mark Complete
+        # 3. Mark Job as Completed
         jobs[job_id] = {
             "status": "completed",
             "filename": video_filename,
@@ -202,7 +259,16 @@ def run_video_pipeline(job_id: str, script_text: str):
 def start_render(data: RenderRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())[:8]
     jobs[job_id] = {"status": "queued", "progress": "Task queued..."}
-    background_tasks.add_task(run_video_pipeline, job_id, data.script_text)
+
+    # Extract ticker from script if available or default to AAPL
+    words = data.script_text.split()
+    ticker = "AAPL"
+    for w in words:
+        if w.isupper() and len(w) <= 5 and w.isalpha():
+            ticker = w
+            break
+
+    background_tasks.add_task(run_video_pipeline, job_id, data.script_text, ticker)
     return {"status": "success", "job_id": job_id}
 
 
@@ -220,7 +286,6 @@ def approve_and_upload(data: UploadRequest):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Video file not found.")
 
-    # YouTube API Integration
     client_id = os.getenv("YOUTUBE_CLIENT_ID")
     client_secret = os.getenv("YOUTUBE_CLIENT_SECRET")
     refresh_token = os.getenv("YOUTUBE_REFRESH_TOKEN")
