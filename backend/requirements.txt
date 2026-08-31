@@ -7,3 +7,8 @@ yfinance
 pydantic
 google-api-python-client
 requests
+pillow
+numpy
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
