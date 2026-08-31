@@ -9,10 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import yfinance as yf
 import numpy as np
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 # Google API client imports for YouTube Publishing
 from google.oauth2.credentials import Credentials
@@ -260,7 +261,6 @@ def start_render(data: RenderRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())[:8]
     jobs[job_id] = {"status": "queued", "progress": "Task queued..."}
 
-    # Extract ticker from script if available or default to AAPL
     words = data.script_text.split()
     ticker = "AAPL"
     for w in words:
