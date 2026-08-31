@@ -66,7 +66,6 @@ def generate_script(data: ScriptRequest):
 
         ticker_sym = data.ticker.upper()
 
-        # Multi-section long form script generator for higher retention & duration
         sections = [
             f"Welcome back to the Channel! Today we are looking at an in-depth market breakdown for {ticker_sym}.",
             f"Looking at today's price movements, {ticker_sym} opened at ${prev_close} and closed at ${close_price}, showing a net change of {change} percent.",
@@ -83,9 +82,15 @@ def generate_script(data: ScriptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def make_scene_image(section_title, text, scene_index, width=720, height=1280):
-    """Generates a dynamic visual frame for each specific section clip with unique colors & layouts."""
-    # Palette themes for scene clips to rotate visually
+def render_scene_at_time(t, duration, sentences, width=720, height=1280):
+    """Memory-efficient renderer that computes the active scene frame on-the-fly."""
+    num_scenes = max(len(sentences), 1)
+    scene_duration = duration / num_scenes
+    scene_idx = min(int(t // scene_duration), num_scenes - 1)
+    
+    current_text = sentences[scene_idx]
+
+    # Color themes that automatically rotate per scene clip
     color_palettes = [
         {"bg": (15, 23, 42), "card": (30, 41, 59), "accent": (99, 102, 241), "text": (241, 245, 249)},
         {"bg": (10, 25, 47), "card": (23, 42, 69), "accent": (16, 185, 129), "text": (255, 255, 255)},
@@ -93,32 +98,31 @@ def make_scene_image(section_title, text, scene_index, width=720, height=1280):
         {"bg": (30, 27, 75), "card": (49, 46, 129), "accent": (245, 158, 11), "text": (254, 243, 199)},
         {"bg": (17, 24, 39), "card": (31, 41, 55), "accent": (14, 165, 233), "text": (243, 244, 246)}
     ]
-    
-    palette = color_palettes[scene_index % len(color_palettes)]
+    palette = color_palettes[scene_idx % len(color_palettes)]
 
     img = Image.new('RGB', (width, height), color=palette["bg"])
     draw = ImageDraw.Draw(img)
 
-    # 1. Top Header Banner
+    # 1. Header Banner
     draw.rectangle([40, 60, 680, 140], fill=palette["card"], outline=palette["accent"], width=2)
-    draw.text((width // 2, 100), f"SCENE {scene_index + 1}: {section_title.upper()}", fill=palette["accent"], anchor="mm")
+    draw.text((width // 2, 100), f"MARKET UPDATE - CLIP #{scene_idx + 1}", fill=palette["accent"], anchor="mm")
 
-    # 2. Main Content Card
+    # 2. Scene Text Display
     draw.rectangle([50, 200, 670, 600], fill=palette["card"], outline=(71, 85, 105), width=2)
 
-    # Wrap sentence text into multi-line blocks for visual display
-    words = text.split()
-    lines = []
-    line_length = 5
-    for i in range(0, len(words), line_length):
-        lines.append(" ".join(words[i:i + line_length]))
+    words = current_text.split()
+    lines = [" ".join(words[i:i + 5]) for i in range(0, len(words), 5)]
 
     y_offset = 300
     for line in lines[:5]:
         draw.text((width // 2, y_offset), line, fill=palette["text"], anchor="mm")
         y_offset += 55
 
-    # 3. Footer Branding
+    # 3. Dynamic Progress Bar
+    progress = int((t / duration) * 580)
+    draw.rectangle([70, 640, 70 + progress, 650], fill=palette["accent"])
+
+    # 4. Footer
     draw.line([(100, 1150), (620, 1150)], fill=palette["accent"], width=3)
     draw.text((width // 2, 1190), "FINANCIAL AUTOMATION ENGINE", fill=(148, 163, 184), anchor="mm")
 
@@ -141,53 +145,38 @@ def run_video_pipeline(job_id: str, script_text: str):
 
         asyncio.run(make_audio())
 
-        # 2. Render Multiple Scene Clips & Concatenate
-        jobs[job_id]["progress"] = "Rendering Multiple Visual Clips..."
+        # 2. Render Animated Clips Efficiently
+        jobs[job_id]["progress"] = "Rendering Video Scenes..."
 
         try:
-            from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
+            from moviepy.editor import AudioFileClip, VideoClip
         except (ImportError, AttributeError):
             from moviepy.audio.io.AudioFileClip import AudioFileClip
-            from moviepy.video.VideoClip import ImageClip
-            from moviepy.video.compositing.concatenate import concatenate_videoclips
+            from moviepy.video.VideoClip import VideoClip
 
         audio_clip = AudioFileClip(audio_path)
-        total_duration = audio_clip.duration
+        duration = audio_clip.duration
 
-        # Split script into individual sentences for scene segments
         sentences = [s.strip() for s in script_text.split('.') if s.strip()]
         if not sentences:
             sentences = [script_text]
 
-        scene_duration = total_duration / len(sentences)
-        scene_titles = ["Introduction", "Market Data", "30-Day Range", "Volume Analysis", "Technical Support", "Future Outlook", "Summary"]
+        # Generator function called per frame to prevent RAM overload
+        def frame_generator(t):
+            return render_scene_at_time(t, duration, sentences)
 
-        clips = []
-        for idx, sentence in enumerate(sentences):
-            title = scene_titles[idx % len(scene_titles)]
-            frame_array = make_scene_image(title, sentence, idx)
-
-            try:
-                clip = ImageClip(frame_array).set_duration(scene_duration)
-            except AttributeError:
-                clip = ImageClip(frame_array).with_duration(scene_duration)
-
-            clips.append(clip)
-
-        # Combine all individual scene clips into one sequence
-        concat_video = concatenate_videoclips(clips, method="compose")
-        
         try:
-            final_clip = concat_video.set_audio(audio_clip)
+            video_clip = VideoClip(frame_generator, duration=duration).set_audio(audio_clip)
         except AttributeError:
-            final_clip = concat_video.with_audio(audio_clip)
+            video_clip = VideoClip(frame_generator, duration=duration).with_audio(audio_clip)
 
-        final_clip.write_videofile(
-            video_path, fps=24, codec="libx264", audio_codec="aac", verbose=False, logger=None
+        # 15 FPS reduces RAM usage and speeds up server processing
+        video_clip.write_videofile(
+            video_path, fps=15, codec="libx264", audio_codec="aac", verbose=False, logger=None
         )
 
         audio_clip.close()
-        final_clip.close()
+        video_clip.close()
 
         # 3. Mark Complete
         jobs[job_id] = {
@@ -227,7 +216,6 @@ def approve_and_upload(data: UploadRequest):
     refresh_token = os.getenv("YOUTUBE_REFRESH_TOKEN")
 
     if not all([client_id, client_secret, refresh_token]):
-        # Fallback if env vars aren't set yet in Render
         return {
             "status": "success",
             "message": f"Video '{data.title}' approved locally! Set YOUTUBE_REFRESH_TOKEN in Render environment to upload live.",
@@ -249,7 +237,7 @@ def approve_and_upload(data: UploadRequest):
                 "title": data.title,
                 "description": data.description,
                 "tags": ["stocks", "finance", "market", "automation"],
-                "categoryId": "27"  # Education
+                "categoryId": "27"
             },
             "status": {
                 "privacyStatus": "public",
