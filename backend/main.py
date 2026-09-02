@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 # Google API client imports for YouTube Publishing
 from google.oauth2.credentials import Credentials
@@ -103,15 +103,15 @@ def generate_chart_image(ticker_sym, history, width=480, height=280):
     ax.set_facecolor('#1E293B')
 
     prices = history["Close"].tail(60).values
-    ax.plot(prices, color='#10B981', linewidth=2.5)
-    ax.fill_between(range(len(prices)), prices, min(prices), color='#10B981', alpha=0.15)
+    ax.plot(prices, color='#10B981', linewidth=3.0)
+    ax.fill_between(range(len(prices)), prices, min(prices), color='#10B981', alpha=0.25)
 
-    ax.set_title(f"{ticker_sym} - 60-Day Technical Trajectory", color='#F8FAFC', fontsize=10, pad=8)
+    ax.set_title(f"{ticker_sym} - 60-Day Technical Trajectory", color='#FFFFFF', fontsize=12, pad=10, fontweight='bold')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('#475569')
-    ax.spines['bottom'].set_color('#475569')
-    ax.tick_params(colors='#94A3B8', labelsize=7)
+    ax.spines['left'].set_color('#64748B')
+    ax.spines['bottom'].set_color('#64748B')
+    ax.tick_params(colors='#CBD5E1', labelsize=8)
     plt.tight_layout()
 
     buf = io.BytesIO()
@@ -121,31 +121,61 @@ def generate_chart_image(ticker_sym, history, width=480, height=280):
     return Image.open(buf).convert('RGB')
 
 
+def get_fallback_font(size):
+    """Safely loads default TTF fonts to ensure high-visibility custom text rendering."""
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "C:\\Windows\\Fonts\\arial.ttf"
+    ]
+    for path in font_paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
+
 def render_rich_scene_frame(t, duration, sentences, stock_data, width=540, height=960):
-    """Renders visual scenes with stock charts, data tables, and text layout."""
+    """Renders visual scenes synced with narration timing and active word chunks."""
     num_scenes = max(len(sentences), 1)
     scene_duration = duration / num_scenes
     scene_idx = min(int(t // scene_duration), num_scenes - 1)
 
-    current_text = sentences[scene_idx]
+    # Calculate intra-scene time progress to sync words with voice audio
+    scene_progress_time = t % scene_duration if scene_duration > 0 else 0
+
+    current_sentence = sentences[scene_idx]
+    words = current_sentence.split()
+    total_words = len(words)
+
+    # Estimate active spoken words dynamic frame by frame
+    words_per_sec = total_words / max(scene_duration, 0.1)
+    active_word_idx = min(int(scene_progress_time * words_per_sec), total_words - 1)
+
     palette = {"bg": (15, 23, 42), "card": (30, 41, 59), "accent": (16, 185, 129), "text": (255, 255, 255)}
 
     img = Image.new('RGB', (width, height), color=palette["bg"])
     draw = ImageDraw.Draw(img)
 
-    # 1. Header Card
-    draw.rectangle([20, 30, width - 20, 90], fill=palette["card"], outline=palette["accent"], width=2)
-    draw.text((width // 2, 60), f"ANALYSIS SCENE {scene_idx + 1} / {num_scenes}", fill=palette["accent"], anchor="mm")
+    font_title = get_fallback_font(20)
+    font_body = get_fallback_font(24)
+    font_small = get_fallback_font(14)
 
-    # 2. Section 1: Visual Chart or Key Metrics Table depending on scene index
+    # 1. Header Card
+    draw.rectangle([20, 25, width - 20, 85], fill=palette["card"], outline=palette["accent"], width=2)
+    draw.text((width // 2, 55), f"ANALYSIS SCENE {scene_idx + 1} / {num_scenes}", fill=(16, 185, 129), font=font_title, anchor="mm")
+
+    # 2. Section 1: Visual Chart or Key Metrics Table
     if scene_idx % 2 == 0 and stock_data.get("chart_img") is not None:
         chart_img = stock_data["chart_img"]
-        img.paste(chart_img, (30, 110))
-        draw.rectangle([30, 110, 510, 390], outline=(71, 85, 105), width=2)
+        img.paste(chart_img, (30, 105))
+        draw.rectangle([30, 105, 510, 385], outline=(100, 116, 139), width=2)
     else:
-        draw.rectangle([30, 110, 510, 390], fill=palette["card"], outline=palette["accent"], width=2)
-        draw.text((width // 2, 135), "KEY METRICS SUMMARY", fill=(245, 158, 11), anchor="mm")
-        draw.line([(50, 155), (490, 155)], fill=(71, 85, 105), width=1)
+        draw.rectangle([30, 105, 510, 385], fill=palette["card"], outline=palette["accent"], width=2)
+        draw.text((width // 2, 135), "KEY METRICS SUMMARY", fill=(251, 191, 36), font=font_title, anchor="mm")
+        draw.line([(50, 155), (490, 155)], fill=(71, 85, 105), width=2)
 
         metrics = [
             ("Ticker Symbol:", stock_data.get("ticker", "STK")),
@@ -155,30 +185,30 @@ def render_rich_scene_frame(t, duration, sentences, stock_data, width=540, heigh
             ("50-Day Moving Avg:", f"${stock_data.get('sma50', 0)}")
         ]
 
-        y_table = 180
+        y_table = 185
         for label, val in metrics:
-            draw.text((60, y_table), label, fill=(148, 163, 184), anchor="lm")
-            draw.text((450, y_table), str(val), fill=(255, 255, 255), anchor="rm")
-            y_table += 40
+            draw.text((60, y_table), label, fill=(203, 213, 225), font=font_small, anchor="lm")
+            draw.text((450, y_table), str(val), fill=(255, 255, 255), font=font_small, anchor="rm")
+            y_table += 38
 
-    # 3. Section 2: Text Card for Active Narration
-    draw.rectangle([30, 410, width - 30, 820], fill=palette["card"], outline=(71, 85, 105), width=2)
+    # 3. Section 2: Text Card - Audio Synchronized Subtitle Display (3-4 words centered)
+    draw.rectangle([30, 405, width - 30, 820], fill=palette["card"], outline=(100, 116, 139), width=2)
 
-    words = current_text.split()
-    lines = [" ".join(words[i:i + 4]) for i in range(0, len(words), 4)]
+    chunk_size = 3
+    chunk_start = (active_word_idx // chunk_size) * chunk_size
+    chunk_words = words[chunk_start:chunk_start + chunk_size]
+    chunk_text = " ".join(chunk_words).upper()
 
-    y_offset = 460
-    for line in lines[:6]:
-        draw.text((width // 2, y_offset), line.upper(), fill=palette["text"], anchor="mm")
-        y_offset += 55
+    # Highlight active synchronized chunk in bright accent color
+    draw.text((width // 2, 610), chunk_text, fill=(251, 191, 36), font=font_body, anchor="mm")
 
-    # 4. Progress Tracking Bar
+    # 4. Progress Bar
     progress = int((t / max(duration, 1)) * (width - 60))
     draw.rectangle([30, 840, 30 + progress, 850], fill=palette["accent"])
 
     # 5. Footer Branding
-    draw.line([(50, 890), (width - 50, 890)], fill=palette["accent"], width=2)
-    draw.text((width // 2, 920), "MAGIC TORTOISE FINANCIAL ENGINE", fill=(148, 163, 184), anchor="mm")
+    draw.line([(50, 885), (width - 50, 885)], fill=palette["accent"], width=2)
+    draw.text((width // 2, 915), "MAGIC TORTOISE FINANCIAL ENGINE", fill=(148, 163, 184), font=font_small, anchor="mm")
 
     return np.array(img)
 
@@ -205,15 +235,15 @@ def run_video_pipeline(job_id: str, script_text: str, ticker: str):
         audio_path = os.path.join(OS_MEDIA_DIR, audio_filename)
         video_path = os.path.join(OS_MEDIA_DIR, video_filename)
 
-        # 1. Generate Voiceover Audio (Slowed down by -15% for clear narration and rhythm)
+        # 1. Voiceover Audio Generation
         async def make_audio():
-            communicate = edge_tts.Communicate(script_text, "en-US-ChristopherNeural", rate="-15%")
+            communicate = edge_tts.Communicate(script_text, "en-US-ChristopherNeural")
             await communicate.save(audio_path)
 
         asyncio.run(make_audio())
 
-        # 2. Render Video with Charts and Data Tables
-        jobs[job_id]["progress"] = "Rendering Animated Charts & Data Tables..."
+        # 2. Render Video with Exact Rhythm Matching
+        jobs[job_id]["progress"] = "Rendering Animated Charts & Dynamic Text..."
 
         try:
             from moviepy.editor import AudioFileClip, VideoClip
@@ -243,7 +273,7 @@ def run_video_pipeline(job_id: str, script_text: str, ticker: str):
         audio_clip.close()
         video_clip.close()
 
-        # 3. Mark Job as Completed
+        # 3. Mark Completed
         jobs[job_id] = {
             "status": "completed",
             "filename": video_filename,
