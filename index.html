@@ -6,63 +6,63 @@
     <title>Automation Studio - YouTube Pipeline</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen p-8">
+<body class="bg-[#0e0e10] text-white min-h-screen p-8">
     <div class="max-w-4xl mx-auto space-y-8">
         
         <!-- Header -->
-        <header class="border-b border-slate-700 pb-4">
-            <h1 class="text-3xl font-bold text-indigo-400">Video Automation Dashboard</h1>
-            <p class="text-slate-400">Generate, review, render, and publish YouTube content.</p>
+        <header class="border-b border-[#26262a] pb-4">
+            <h1 class="text-3xl font-bold text-[#ff0033]">Video Automation Dashboard</h1>
+            <p class="text-[#737373]">Generate, review, render, and publish YouTube content.</p>
         </header>
 
         <!-- Pipeline Controls -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             
             <!-- Left Panel: Content Creation -->
-            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-                <h2 class="text-xl font-semibold text-slate-200">1. Data & Script Setup</h2>
+            <div class="bg-[#18181b] p-6 rounded-xl border border-[#26262a] space-y-4">
+                <h2 class="text-xl font-semibold text-white">1. Data & Script Setup</h2>
                 
                 <div>
-                    <label class="block text-sm text-slate-400 mb-1">Stock Ticker Symbol</label>
+                    <label class="block text-sm text-[#ff0033] font-bold tracking-wider mb-1">Stock Ticker Symbol</label>
                     <div class="flex gap-2">
-                        <input id="tickerInput" type="text" value="AAPL" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-full">
-                        <button onclick="generateScript()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded font-medium">Fetch Data</button>
+                        <input id="tickerInput" type="text" value="AAPL" class="bg-[#0e0e10] border border-[#26262a] rounded px-3 py-2 text-white w-full">
+                        <button onclick="generateScript()" class="bg-[#ff0033] hover:bg-[#d6002b] text-white px-4 py-2 rounded font-medium">Fetch Data</button>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-sm text-slate-400 mb-1">Generated Script (Editable)</label>
-                    <textarea id="scriptBox" rows="6" class="bg-slate-900 border border-slate-700 rounded p-3 text-white w-full text-sm"></textarea>
+                    <label class="block text-sm text-[#ff0033] font-bold tracking-wider mb-1">Generated Script (Editable)</label>
+                    <textarea id="scriptBox" rows="6" class="bg-[#0e0e10] border border-[#26262a] rounded p-3 text-white w-full text-sm"></textarea>
                 </div>
 
-                <button onclick="renderVideo()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded font-medium">
+                <button onclick="renderVideo()" class="w-full bg-[#ff0033] hover:bg-[#d6002b] text-white py-2 rounded font-medium">
                     2. Render Voice & Video
                 </button>
             </div>
 
             <!-- Right Panel: Review & Approval -->
-            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-                <h2 class="text-xl font-semibold text-slate-200">2. Review & Approve</h2>
+            <div class="bg-[#18181b] p-6 rounded-xl border border-[#26262a] space-y-4">
+                <h2 class="text-xl font-semibold text-white">2. Review & Approve</h2>
                 
-                <div class="bg-black aspect-[9/16] max-h-[300px] mx-auto rounded overflow-hidden flex items-center justify-center border border-slate-700 relative">
+                <div class="bg-[#000000] aspect-[9/16] max-h-[300px] mx-auto rounded overflow-hidden flex items-center justify-center border border-[#26262a] relative">
                     <video id="videoPreview" controls playsinline class="w-full h-full hidden object-contain"></video>
-                    <div id="loadingSpinner" class="hidden text-indigo-400 text-sm animate-pulse">Rendering Video on Cloud...</div>
-                    <span id="placeholderText" class="text-slate-500 text-sm">No video rendered yet</span>
+                    <div id="loadingSpinner" class="hidden text-[#ff0033] text-sm animate-pulse">Rendering Video on Cloud...</div>
+                    <span id="placeholderText" class="text-[#737373] text-sm">No video rendered yet</span>
                 </div>
 
                 <div class="space-y-2">
-                    <input id="videoTitle" type="text" placeholder="YouTube Video Title" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-full text-sm">
-                    <input id="videoDesc" type="text" placeholder="Video Description" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-full text-sm">
+                    <input id="videoTitle" type="text" placeholder="YouTube Video Title" class="bg-[#0e0e10] border border-[#26262a] rounded px-3 py-2 text-white w-full text-sm">
+                    <input id="videoDesc" type="text" placeholder="Video Description" class="bg-[#0e0e10] border border-[#26262a] rounded px-3 py-2 text-white w-full text-sm">
                 </div>
 
-                <button onclick="approveVideo()" class="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded font-medium">
+                <button onclick="approveVideo()" class="w-full bg-[#ff0033] hover:bg-[#d6002b] text-white py-2 rounded font-medium">
                     3. Approve & Publish to YouTube
                 </button>
             </div>
         </div>
 
         <!-- Status Log -->
-        <div id="statusBox" class="bg-slate-950 p-4 rounded border border-slate-800 text-sm font-mono text-slate-400">
+        <div id="statusBox" class="bg-[#0e0e10] p-4 rounded border border-[#26262a] text-sm font-mono text-[#ff0033]">
             System ready. Enter a ticker to begin pipeline.
         </div>
     </div>
