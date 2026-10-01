@@ -2,16 +2,17 @@ import os
 import json
 import uuid
 import asyncio
-import random
-import requests
+import shutil
 import numpy as np
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from typing import List
+from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from PIL import Image, ImageDraw, ImageFont
 import edge_tts
 
-app = FastAPI(title="Fast Multi-Niche YouTube Automation Engine")
+app = FastAPI(title="Hybrid Video Automation Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,185 +23,170 @@ app.add_middleware(
 )
 
 OS_MEDIA_DIR = "static_media"
-CACHE_DIR = "media_cache"
+UPLOAD_DIR = "user_uploads"
 os.makedirs(OS_MEDIA_DIR, exist_ok=True)
-os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=OS_MEDIA_DIR), name="static")
 
 jobs = {}
-PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")
 
-class ScriptGenerateRequest(BaseModel):
-    topic: str
+class CustomScriptRequest(BaseModel):
     niche: str
-    duration_minutes: int = 1
     aspect_ratio: str = "16:9"
-
-class RenderRequest(BaseModel):
-    script_json: str
+    script_text: str
 
 @app.get("/")
 def root():
-    return {"status": "online", "system": "High-Speed Video Engine"}
+    return {"status": "online", "system": "Hybrid Manual/Automated Engine"}
 
-# --- STEP 1: SCRIPT GENERATION ---
-@app.post("/api/generate-script")
-def generate_niche_script(data: ScriptGenerateRequest):
+# --- STEP 1: UPLOAD LOCAL B-ROLL CLIPS ---
+@app.post("/api/upload-clips")
+async def upload_clips(files: List[UploadFile] = File(...)):
+    saved_files = []
+    session_id = str(uuid.uuid4())[:8]
+    session_dir = os.path.join(UPLOAD_DIR, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+
+    for file in files:
+        if file.filename.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
+            file_path = os.path.join(session_dir, file.filename)
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            saved_files.append(file_path)
+
+    if not saved_files:
+        raise HTTPException(status_code=400, detail="No valid video files uploaded.")
+
+    return {"status": "success", "session_id": session_id, "clip_paths": saved_files}
+
+
+# --- STEP 2: SUBTITLE & OVERLAY GENERATOR ---
+def get_fallback_font(size: int):
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "C:\\Windows\\Fonts\\arial.ttf"
+    ]
+    for path in font_paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
+
+def render_subtitle_frame(t, duration, sentence, width=1280, height=720):
+    words = sentence.split()
+    total_words = len(words)
+    if total_words == 0:
+        return np.zeros((height, width, 4), dtype=np.uint8)
+
+    words_per_sec = total_words / max(duration, 0.1)
+    active_word_idx = min(int(t * words_per_sec), total_words - 1)
+
+    chunk_size = 3
+    chunk_start = (active_word_idx // chunk_size) * chunk_size
+    chunk_words = words[chunk_start:chunk_start + chunk_size]
+    chunk_text = " ".join(chunk_words).upper()
+
+    img = Image.new('RGBA', (width, height), color=(0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    font = get_fallback_font(36 if width == 1280 else 48)
+
+    box_w, box_h = int(width * 0.85), 110
+    box_x = (width - box_w) // 2
+    box_y = height - 180 if height == 720 else height - 350
+
+    draw.rounded_rectangle([box_x, box_y, box_x + box_w, box_y + box_h], radius=15, fill=(15, 23, 42, 220), outline=(16, 185, 129, 255), width=3)
+    draw.text((width // 2, box_y + (box_h // 2)), chunk_text, fill=(251, 191, 36, 255), font=font, anchor="mm")
+
+    return np.array(img)
+
+
+# --- STEP 3: PIPELINE EXECUTION ---
+def run_hybrid_pipeline(job_id: str, script_text: str, niche: str, aspect_ratio: str, session_id: str):
     try:
-        topic = data.topic.strip()
-        niche = data.niche.strip().title()
+        jobs[job_id] = {"status": "processing", "progress": "Generating AI Voiceover..."}
         
-        # Kept lean (3 to 5 scenes max) for fast rendering on standard cloud servers
-        scene_count = 4
-
-        keyword_pools = {
-            "Health": ["healthy human", "running athlete", "doctor medical", "clean water"],
-            "Military": ["military drone", "soldier field", "radar screen", "fighter jet"],
-            "Tech": ["artificial intelligence", "circuit board", "data center", "futuristic city"],
-            "Crime": ["dark street", "police light night", "mysterious shadow", "interrogation"],
-            "Finance": ["stock chart", "currency money", "skyscraper city", "digital trading"]
-        }
-
-        selected_pool = keyword_pools.get(niche, ["abstract motion", "cinematic landscape"])
-
-        scenes = []
-        for i in range(1, scene_count + 1):
-            narration = f"Scene {i} on {topic}. Key insight into {niche.lower()} developments."
-            keywords = [random.choice(selected_pool)]
-            scenes.append({
-                "scene_id": i,
-                "narration": narration,
-                "keywords": keywords
-            })
-
-        script_payload = {
-            "topic": topic,
-            "niche": niche,
-            "aspect_ratio": data.aspect_ratio,
-            "total_scenes": len(scenes),
-            "scenes": scenes
-        }
-
-        return {"status": "success", "script_json": json.dumps(script_payload, indent=2)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# --- STEP 2: PIXABAY MEDIA SCRAPER ---
-def fetch_pixabay_video(keyword: str) -> str:
-    if not PIXABAY_API_KEY:
-        return ""
-
-    safe_kw = "".join(c for c in keyword if c.isalnum() or c == ' ').strip().replace(" ", "_")
-    cache_path = os.path.join(CACHE_DIR, f"{safe_kw}.mp4")
-
-    if os.path.exists(cache_path):
-        return cache_path
-
-    url = f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}&q={requests.utils.quote(keyword)}&per_page=3"
-
-    try:
-        resp = requests.get(url, timeout=10)
-        if resp.status_code == 200:
-            hits = resp.json().get("hits", [])
-            if hits:
-                videos = hits[0].get("videos", {})
-                # Use tiny/small files to accelerate network downloading and video decoding speed
-                selected = videos.get("small") or videos.get("tiny") or videos.get("medium")
-                if selected:
-                    v_resp = requests.get(selected.get("url"), stream=True)
-                    with open(cache_path, "wb") as f:
-                        for chunk in v_resp.iter_content(chunk_size=1024*1024):
-                            f.write(chunk)
-                    return cache_path
-    except Exception as e:
-        print(f"Pixabay fetch error: {e}")
-    return ""
-
-
-# --- STEP 3: HIGH-SPEED RENDERER ---
-def run_full_pipeline(job_id: str, script_json_str: str):
-    try:
-        jobs[job_id] = {"status": "processing", "progress": "Parsing Script..."}
-        script_data = json.loads(script_json_str)
-        scenes = script_data.get("scenes", [])
-        aspect_ratio = script_data.get("aspect_ratio", "16:9")
-
         width, height = (1280, 720) if aspect_ratio == "16:9" else (720, 1280)
-
-        full_narration = " ".join([s["narration"] for s in scenes])
         audio_filename = f"audio_{job_id}.mp3"
         video_filename = f"video_{job_id}.mp4"
         audio_path = os.path.join(OS_MEDIA_DIR, audio_filename)
         video_path = os.path.join(OS_MEDIA_DIR, video_filename)
 
         # 1. Voiceover Generation
-        jobs[job_id]["progress"] = "Generating AI Voiceover..."
         async def make_audio():
-            voice = "en-US-ChristopherNeural" if script_data.get("niche") == "Military" else "en-US-GuyNeural"
-            communicate = edge_tts.Communicate(full_narration, voice)
+            voice = "en-US-ChristopherNeural" if niche == "Military" else "en-US-GuyNeural"
+            communicate = edge_tts.Communicate(script_text, voice)
             await communicate.save(audio_path)
 
         asyncio.run(make_audio())
 
-        # 2. Fetch B-roll
-        jobs[job_id]["progress"] = "Downloading Clips..."
-        clip_paths = []
-        for sc in scenes:
-            kw = sc.get("keywords", ["abstract"])[0]
-            fetched = fetch_pixabay_video(kw)
-            if fetched:
-                clip_paths.append(fetched)
+        # 2. Gather Uploaded Clips
+        jobs[job_id]["progress"] = "Processing Uploaded Video B-Roll..."
+        session_dir = os.path.join(UPLOAD_DIR, session_id)
+        uploaded_clips = []
+        if os.path.exists(session_dir):
+            uploaded_clips = [os.path.join(session_dir, f) for f in os.listdir(session_dir) if f.lower().endswith(('.mp4', '.mov', '.avi', '.mkv'))]
 
-        # 3. FAST VIDEO STITCHING
-        jobs[job_id]["progress"] = "Rendering Video..."
-        
         try:
-            from moviepy.editor import AudioFileClip, VideoFileClip, concatenate_videoclips, ColorClip
+            from moviepy.editor import AudioFileClip, VideoClip, VideoFileClip, concatenate_videoclips, CompositeVideoClip, ColorClip
         except ImportError:
             from moviepy.audio.io.AudioFileClip import AudioFileClip
-            from moviepy.video.VideoClip import ColorClip, VideoFileClip
+            from moviepy.video.VideoClip import ColorClip, VideoClip, VideoFileClip
             from moviepy.video.compositing.concatenate import concatenate_videoclips
+            from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 
         audio_clip = AudioFileClip(audio_path)
         total_duration = audio_clip.duration
-        scene_dur = total_duration / max(len(scenes), 1)
 
-        processed_clips = []
-        for path in clip_paths:
-            try:
-                c = VideoFileClip(path).resize(newsize=(width, height)).without_audio()
-                if c.duration < scene_dur:
-                    c = c.loop(duration=scene_dur)
-                else:
-                    c = c.subclip(0, scene_dur)
-                processed_clips.append(c)
-            except Exception:
-                pass
+        # 3. Align Video Clips to Audio Length
+        jobs[job_id]["progress"] = "Stitching Video Clips & Burning Subtitles..."
+        bg_clips = []
 
-        if processed_clips:
-            final_clip = concatenate_videoclips(processed_clips, method="compose").subclip(0, total_duration)
+        if uploaded_clips:
+            clip_dur = total_duration / len(uploaded_clips)
+            for path in uploaded_clips:
+                try:
+                    c = VideoFileClip(path).resize(newsize=(width, height)).without_audio()
+                    if c.duration < clip_dur:
+                        c = c.loop(duration=clip_dur)
+                    else:
+                        c = c.subclip(0, clip_dur)
+                    bg_clips.append(c)
+                except Exception as e:
+                    print(f"Error loading clip {path}: {e}")
+
+        if bg_clips:
+            base_bg = concatenate_videoclips(bg_clips, method="compose").subclip(0, total_duration)
         else:
-            final_clip = ColorClip(size=(width, height), color=(15, 23, 42), duration=total_duration)
+            base_bg = ColorClip(size=(width, height), color=(15, 23, 42), duration=total_duration)
 
-        final_clip = final_clip.set_audio(audio_clip)
+        # 4. Generate Subtitles Mask
+        def subtitle_gen(t):
+            return render_subtitle_frame(t, total_duration, script_text, width=width, height=height)
 
-        # High-Speed Encoding Options for Restricted Hardware
-        final_clip.write_videofile(
+        sub_clip = VideoClip(subtitle_gen, duration=total_duration).set_ismask(False)
+        final_video = CompositeVideoClip([base_bg, sub_clip]).set_audio(audio_clip)
+
+        # 5. Export MP4
+        final_video.write_videofile(
             video_path,
             fps=24,
             codec="libx264",
             audio_codec="aac",
             preset="ultrafast",
             threads=2,
-            bitrate="1500k",
+            bitrate="2000k",
             verbose=False,
             logger=None
         )
 
         audio_clip.close()
-        final_clip.close()
+        base_bg.close()
+        final_video.close()
 
         jobs[job_id] = {
             "status": "completed",
@@ -211,11 +197,19 @@ def run_full_pipeline(job_id: str, script_json_str: str):
         jobs[job_id] = {"status": "failed", "error": str(e)}
 
 
-@app.post("/api/render-video")
-def start_render(data: RenderRequest, background_tasks: BackgroundTasks):
+@app.post("/api/render-hybrid")
+def render_hybrid(
+    background_tasks: BackgroundTasks,
+    script_text: str = Form(...),
+    niche: str = Form(...),
+    aspect_ratio: str = Form(...),
+    session_id: str = Form(...)
+):
     job_id = str(uuid.uuid4())[:8]
     jobs[job_id] = {"status": "queued", "progress": "Task queued..."}
-    background_tasks.add_task(run_full_pipeline, job_id, data.script_json)
+    background_tasks.add_task(
+        run_hybrid_pipeline, job_id, script_text, niche, aspect_ratio, session_id
+    )
     return {"status": "success", "job_id": job_id}
 
 
