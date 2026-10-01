@@ -32,7 +32,7 @@ app.mount("/static", StaticFiles(directory=OS_MEDIA_DIR), name="static")
 
 jobs = {}
 
-PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")
+PIXABAY_API_KEY = os.getenv("57821575-2c0420b658c3f9b8165a50eab", "")
 
 class ScriptGenerateRequest(BaseModel):
     topic: str
