@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Multi-Niche Video Automation Dashboard</title>
+  <title>Hybrid AI Video Automation Engine</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen p-6 font-sans">
@@ -11,27 +11,36 @@
     
     <!-- Header -->
     <header class="border-b border-slate-800 pb-4">
-      <h1 class="text-3xl font-bold text-emerald-400">AI Video Automation Engine</h1>
-      <p class="text-slate-400 mt-1">Generate multi-niche YouTube videos with AI voiceovers and automated stock B-roll.</p>
+      <h1 class="text-3xl font-bold text-emerald-400">Hybrid Video Automation Studio</h1>
+      <p class="text-slate-400 mt-1">Upload custom video clips, paste full scripts, and let AI generate voiceover & subtitles.</p>
     </header>
 
-    <!-- Controls Form -->
+    <!-- Step 1: Upload Clips -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
+      <h2 class="text-xl font-bold text-slate-200">1. Upload B-Roll Videos (.mp4)</h2>
+      <input type="file" id="videoFiles" multiple accept="video/mp4,video/mov,video/avi" class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-500 file:text-slate-950 hover:file:bg-emerald-600 cursor-pointer">
+      <button id="uploadBtn" onclick="uploadClips()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-3 px-6 rounded-lg transition duration-200">
+        Upload Selected Video Clips
+      </button>
+      <p id="uploadStatus" class="text-sm font-semibold text-amber-400"></p>
+    </div>
+
+    <!-- Step 2: Script & Settings -->
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+      <h2 class="text-xl font-bold text-slate-200">2. Script & Niche Settings</h2>
       
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- Niche Selection -->
         <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">Target Niche</label>
+          <label class="block text-sm font-medium text-slate-300 mb-2">Target Niche Voice</label>
           <select id="nicheSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
-            <option value="Health">Health & Biology</option>
-            <option value="Military">Military & Defense News</option>
+            <option value="Military">Military & Tactical (Deep Voice)</option>
+            <option value="Health">Health & Biology (Clear Voice)</option>
             <option value="Tech">Tech & AI Breakthroughs</option>
             <option value="Crime">Dark History & True Crime</option>
             <option value="Finance">Economy & Business Stories</option>
           </select>
         </div>
 
-        <!-- Aspect Ratio / Format -->
         <div>
           <label class="block text-sm font-medium text-slate-300 mb-2">Video Format</label>
           <select id="ratioSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
@@ -41,28 +50,17 @@
         </div>
       </div>
 
-      <!-- Topic Input -->
       <div>
-        <label class="block text-sm font-medium text-slate-300 mb-2">Video Topic / Concept</label>
-        <input type="text" id="topicInput" placeholder="e.g. What happens to your brain when you sleep 8 hours" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        <label class="block text-sm font-medium text-slate-300 mb-2">Full Video Script / Narration</label>
+        <textarea id="scriptText" placeholder="Paste your full custom script here..." class="w-full h-48 bg-slate-900 border border-slate-700 rounded-lg p-4 font-sans text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
       </div>
 
-      <button id="generateBtn" onclick="generateScript()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-3 px-6 rounded-lg transition duration-200">
-        1. Generate Script & Visual Keywords
+      <button id="renderBtn" onclick="startRender()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200">
+        3. Render Final Video
       </button>
     </div>
 
-    <!-- Script / JSON Preview -->
-    <div id="scriptSection" class="hidden bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
-      <h2 class="text-xl font-bold text-slate-200">Generated Script Blueprint</h2>
-      <textarea id="scriptJsonDisplay" class="w-full h-64 bg-slate-900 border border-slate-700 rounded-lg p-4 font-mono text-sm text-emerald-300 focus:outline-none" readonly></textarea>
-      
-      <button id="renderBtn" onclick="startVideoRender()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200">
-        2. Render Video (Fetch Clips, Synthesize Audio & Burn Subtitles)
-      </button>
-    </div>
-
-    <!-- Render Status & Video Output -->
+    <!-- Step 3: Progress & Output -->
     <div id="statusSection" class="hidden bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
       <h2 class="text-xl font-bold text-slate-200">Rendering Status</h2>
       <p id="statusProgress" class="text-amber-400 font-medium">Initializing...</p>
@@ -76,63 +74,71 @@
   </div>
 
   <script>
-    // Updated with your exact active Render backend URL
     const BACKEND_URL = "https://youtube-automation-engine.onrender.com"; 
+    let activeSessionId = "";
 
-    async function generateScript() {
-      const topic = document.getElementById("topicInput").value;
-      const niche = document.getElementById("nicheSelect").value;
-      const ratio = document.getElementById("ratioSelect").value;
-      const btn = document.getElementById("generateBtn");
+    async function uploadClips() {
+      const fileInput = document.getElementById("videoFiles");
+      const statusText = document.getElementById("uploadStatus");
 
-      if (!topic) {
-        alert("Please enter a topic!");
+      if (!fileInput.files.length) {
+        alert("Please select at least one .mp4 video file.");
         return;
       }
 
-      btn.disabled = true;
-      btn.innerText = "Generating Script...";
+      const formData = new FormData();
+      for (let i = 0; i < fileInput.files.length; i++) {
+        formData.append("files", fileInput.files[i]);
+      }
+
+      statusText.innerText = "Uploading clips to server...";
 
       try {
-        const resp = await fetch(`${BACKEND_URL}/api/generate-script`, {
+        const resp = await fetch(`${BACKEND_URL}/api/upload-clips`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            topic: topic,
-            niche: niche,
-            duration_minutes: 1, // Start with 1 min test videos for fast rendering
-            aspect_ratio: ratio
-          })
+          body: formData
         });
 
         const data = await resp.json();
         if (data.status === "success") {
-          document.getElementById("scriptJsonDisplay").value = data.script_json;
-          document.getElementById("scriptSection").classList.remove("hidden");
+          activeSessionId = data.session_id;
+          statusText.innerText = `Successfully uploaded ${data.clip_paths.length} clip(s)! Ready to render.`;
         } else {
-          alert("Error generating script: " + (data.detail || "Unknown error"));
+          statusText.innerText = "Upload failed: " + data.detail;
         }
       } catch (err) {
-        alert("Server connection failed: " + err);
-      } finally {
-        btn.disabled = false;
-        btn.innerText = "1. Generate Script & Visual Keywords";
+        statusText.innerText = "Upload error: " + err;
       }
     }
 
-    async function startVideoRender() {
-      const scriptJson = document.getElementById("scriptJsonDisplay").value;
-      const btn = document.getElementById("renderBtn");
+    async function startRender() {
+      const scriptText = document.getElementById("scriptText").value.trim();
+      const niche = document.getElementById("nicheSelect").value;
+      const aspect_ratio = document.getElementById("ratioSelect").value;
 
-      btn.disabled = true;
+      if (!scriptText) {
+        alert("Please enter a script.");
+        return;
+      }
+
+      if (!activeSessionId) {
+        alert("Please upload at least one video clip first.");
+        return;
+      }
+
       document.getElementById("statusSection").classList.remove("hidden");
-      document.getElementById("statusProgress").innerText = "Queuing render job...";
+      document.getElementById("statusProgress").innerText = "Submitting render job...";
+
+      const formData = new FormData();
+      formData.append("script_text", scriptText);
+      formData.append("niche", niche);
+      formData.append("aspect_ratio", aspect_ratio);
+      formData.append("session_id", activeSessionId);
 
       try {
-        const resp = await fetch(`${BACKEND_URL}/api/render-video`, {
+        const resp = await fetch(`${BACKEND_URL}/api/render-hybrid`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ script_json: scriptJson })
+          body: formData
         });
 
         const data = await resp.json();
