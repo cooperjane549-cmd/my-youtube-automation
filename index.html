@@ -76,8 +76,8 @@
   </div>
 
   <script>
-    // Update with your actual Render deployment URL
-    const BACKEND_URL = "https://main-youtube-automation-engine.onrender.com"; 
+    // Updated with your exact active Render backend URL
+    const BACKEND_URL = "https://youtube-automation-engine.onrender.com"; 
 
     async function generateScript() {
       const topic = document.getElementById("topicInput").value;
@@ -110,7 +110,7 @@
           document.getElementById("scriptJsonDisplay").value = data.script_json;
           document.getElementById("scriptSection").classList.remove("hidden");
         } else {
-          alert("Error generating script: " + data.detail);
+          alert("Error generating script: " + (data.detail || "Unknown error"));
         }
       } catch (err) {
         alert("Server connection failed: " + err);
